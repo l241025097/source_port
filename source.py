@@ -870,6 +870,12 @@ def decode_row(row_dict):
             value = str(value).decode('gbk')
         yield (str(key).decode('gbk'), value)
 
+def change_row_dict(front_key_dict, row_gen):
+    for key, value in row_gen:
+        if value and key in front_key_dict:
+            value = front_key_dict[key][value]
+        yield (key, value)
+
 def get_front_data(front_key_dict, front_table):
     dbh, sth = connect_front()
     sql = 'select * from %s a where a.DELETE_STATE=0' % front_table
@@ -882,8 +888,8 @@ def get_front_data(front_key_dict, front_table):
         print err
     count = 0
     while 1:
-        # if count > 100:
-        #     break
+        if count > 100:
+            break
         print count
         count += 1
         row = sth.fetchone()
@@ -891,4 +897,4 @@ def get_front_data(front_key_dict, front_table):
             break
         row_dict = row._asdict()
         row_gen = decode_row(row_dict)
-        yield {key: front_key_dict[key][value] if key in front_key_dict else value for key, value in row_gen}
+        yield dict(change_row_dict(front_key_dict, row_gen))
