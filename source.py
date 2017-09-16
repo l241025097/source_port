@@ -967,8 +967,8 @@ def get_front_data(front_key_dict, front_table):
         print err
     count = 0
     while 1:
-        # if count > 100:
-        #     break
+        if count > 100:
+            break
         print count
         count += 1
         row = sth.fetchone()
