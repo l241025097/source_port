@@ -797,7 +797,49 @@ def query_value(key, value):
             'service': 'queryDescInfo.out',
             'conditions': [{'SERIAL_NO': value}],
             'zh': 'DESC_CHINA'
-        }
+        },
+        'NE_MODEL': {
+            'special': 'pub',
+            'service': 'queryEqpModel.out',
+            'conditions': [{'GID': value}],
+            'zh': 'EQP_MODEL_NAME'
+        },
+        'NE_TYPE': {
+            'special': 'pub',
+            'service': 'queryEqpType.out',
+            'conditions': [{'GID': value}],
+            'zh': 'EQP_TYPE_NAME'
+        },
+        'KEEP_MODE': {
+            'special': 'pub',
+            'service': 'queryDescInfo.out',
+            'conditions': [{'SERIAL_NO': value}, {'KEYWORD': 'MAINTENAINCE_TYPE'}],
+            'zh': 'DESC_CHINA'
+        },
+        'NETWORKLAYER': {
+            'special': 'pub',
+            'service': 'queryDescInfo.out',
+            'conditions': [{'SERIAL_NO': value}, {'KEYWORD': 'NET_LEVEL'}],
+            'zh': 'DESC_CHINA'
+        },
+        'SYS_LEVEL': {
+            'special': 'pub',
+            'service': 'queryDescInfo.out',
+            'conditions': [{'SERIAL_NO': value}, {'KEYWORD': 'TRS_LEVEL'}],
+            'zh': 'DESC_CHINA'
+        },
+        'LIFE_CYCLE': {
+            'special': 'pub',
+            'service': 'queryDescInfo.out',
+            'conditions': [{'SERIAL_NO': value}, {'KEYWORD': 'LIFE_CYCLE'}],
+            'zh': 'DESC_CHINA'
+        },
+        'POSIT_TYPE_ID': {
+            'special': 'pub',
+            'service': 'queryDescInfo.out',
+            'conditions': [{'SERIAL_NO': value}, {'KEYWORD': 'POSIT_TYPE'}],
+            'zh': 'DESC_CHINA'
+        },
     }
     res_key = query_dict[key]['zh']
     res_dict = query(query_dict[key]['special'], query_dict[key]['service'], query_dict[key]['conditions'])
@@ -807,6 +849,52 @@ def query_value(key, value):
 def make_row_dict(sth):
     Row = namedtuple('Row', (des[0] for des in sth.description))
     return Row
+
+def cs_regular_dict():
+    return {
+        'PORT_TYPE_ID': {'zh': u'端口光电类型', '1': u'电端口', '2': u'光端口', '3': u'逻辑端口', '4': u'适配口'},
+        'LINK_FLAG': {'zh': u'关联标志', '0': u'未知', '1': u'未知'},
+        'DELETE_STATE': {'zh': u'资源删除状态', '1': u'已删除', '0': u'未删除'},
+        'RES_TYPE_ID': {'zh': u'资源类型', '310': u'端口'},
+        'IS_LOG_PORT': {'zh': u'是否逻辑端口', '0': u'未知', '1': u'未知'},
+        'SUPER_RES_TYPE': {'zh': u'所属设备类型', '1053': u'传输网元'},
+        'SPECIALITY_ID': {'zh': u'专业类型', '50': u'传输'},
+        'ISUNION': {'zh': u'是否连接', '0': u'未知', '1': u'未知'},
+        'BINDED': {'zh': u'已邦定', '0': u'未知', '1': u'未知'},
+        'MAINTAINDEPT': {
+            'zh': u'传输网元厂家',
+            '58': u'烽火',
+            '90004028': u'未知',
+            '90000689': u'华为',
+            '42762583': u'阿尔卡特',
+            '28000144': u'未知',
+            '90000688': u'中兴',
+            '152': u'华为',
+            '202': u'中兴',
+            '90004601': u'未知',
+            '28003753': u'未知',
+            '90000686': u'未知',
+            '90004618': u'阿尔卡特',
+            '90002443': u'未知',
+        }
+    }
+
+def cs_ne_group_list():
+    return [
+        'NE_MODEL', # 传输网元型号 pub queryEqpModel.out
+        'NE_TYPE', # 传输网元类型 pub queryEqpType.out
+        'MNT_STATE_ID', # 维护状态 keyword: MAINTENANCE_STATE pub queryDescInfo.out
+        'DELETE_STATE', # 资源删除状态 固定值0
+        'KEEP_MODE', # 维护方式 keyword: MAINTENAINCE_TYPE pub queryDescInfo.out
+        'MAINTAINDEPT', # 传输网元厂家 待查
+        'NETWORKLAYER', # 网络级别 keyword: NET_LEVEL pub queryDescInfo.out
+        'SYS_LEVEL', # 系统级别 keyword: TRS_LEVEL pub queryDescInfo.out
+        'ISUNION', # 查不到 固定值1 是
+        'BINDED', # 查不到 固定值0 否
+        'LIFE_CYCLE', # 资源生命周期 keyword: LIFE_CYCLE pub queryDescInfo.out
+        # 'SMALL_MFR', # 待查
+        'POSIT_TYPE_ID', # 安置地点类型 keyword: POSIT_TYPE pub queryDescInfo.out
+    ]
 
 def cs_port_group_list():
     return  [
@@ -818,21 +906,10 @@ def cs_port_group_list():
         'DELETE_STATE', # 资源删除状态，固定值0
         'RES_TYPE_ID', # 资源类型固定值310
         'PORT_RATE', # 端口速率，keyword: RME_TRS_LGC_PORT_RATE pub queryDescInfo.out
-        'IS_LOG_PORT', # 查不到，固定值0 否
+        'IS_LOG_PORT', # 是否逻辑端口，固定值0 否
         'SUPER_RES_TYPE', # 所属设备类型，固定值1053 传输网元
         'SPECIALITY_ID' # 专业类型: 固定值50 传输
     ]
-
-def cs_port_regular_dict():
-    return {
-        'PORT_TYPE_ID': {'zh': u'端口光电类型', '1': u'电端口', '2': u'光端口', '3': u'逻辑端口', '4': u'适配口'},
-        'LINK_FLAG': {'zh': u'关联标志', '0': u'未知', '1': u'未知'},
-        'DELETE_STATE': {'zh': u'资源删除状态', '1': u'已删除', '0': u'未删除'},
-        'RES_TYPE_ID': {'zh': u'资源类型', '310': u'端口'},
-        'IS_LOG_PORT': {'zh': u'是否逻辑端口', '0': u'未知', '1': u'未知'},
-        'SUPER_RES_TYPE': {'zh': u'所属设备类型', '1053': u'传输网元'},
-        'SPECIALITY_ID': {'zh': u'专业类型', '50': u'传输'},
-    }
 
 def front_key_group(group_list, regular_dict, front_table):
     group_dict = {}
@@ -850,11 +927,13 @@ def front_key_group(group_list, regular_dict, front_table):
             row = sth.fetchone()
             if not row:
                 break
-            row_dict = row._asdict()
+            row_dict = dict(decode_row(row._asdict()))
             value = row_dict[group_key]
             if value:
                 value = str(value)
                 if group_key in regular_dict:
+                    if value not in regular_dict[group_key]:
+                        regular_dict[group_key][value] = u'未知'
                     continue
                 zh_str = query_value(group_key, value)
                 if group_key not in group_dict:
