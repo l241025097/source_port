@@ -20,8 +20,13 @@ if __name__ == '__main__':
     # insert_ne_db(ipran_port_file, 'ipran_port_output')
     # create_index('cs_port_output', {u'端口网管标识': 1})
     # create_index('ipran_port_output', {u'端口网管标识': 1})
-    front_key_dict = front_key_group(cs_port_group_list(), cs_regular_dict(), 'RES_GUANGXI.RME_PORT')
-    DataFrame(get_front_data(front_key_dict, 'RES_GUANGXI.RME_PORT')).to_csv('cs_port_output.csv', encoding='gbk')
-    insert_ne_db('cs_port_output.csv', 'cs_port_output')
-    create_index('cs_port_output', {'NMS_ORIG_RES_ID': 1})
+    
+    # front_key_dict = front_key_group(cs_port_group_list(), cs_regular_dict(), 'RES_GUANGXI.RME_PORT')
+    # DataFrame(get_front_data(front_key_dict, 'RES_GUANGXI.RME_PORT')).to_csv('cs_port_output.csv', encoding='gbk')
+    # insert_ne_db('cs_port_output.csv', 'cs_port_output')
+    # create_index('cs_port_output', {'NMS_ORIG_RES_ID': 1})
+    front_key_dict = front_key_group(cs_ne_group_list(), cs_regular_dict(), 'RES_GUANGXI.TRS_TRS_NE')
+    DataFrame(get_front_data(front_key_dict, 'RES_GUANGXI.TRS_TRS_NE')).to_csv('cs_output.csv', encoding='gbk')
+    insert_ne_db('cs_output.csv', 'cs_output')
+    create_index('cs_output', {'NMS_ORIG_RES_ID': 1})
     pass
