@@ -22,6 +22,7 @@ import pymongo
 from print_r import print_r
 import DBM
 from collections import namedtuple
+from pandas import read_csv, merge, DataFrame
 
 reload(sys)
 sys.setdefaultencoding('utf8')
@@ -516,6 +517,17 @@ def check_port_rate(port_dict):
         w_fh.write(id_str)
     pass
 
+def match_with_id(cs_id_csv, front_id_csv):
+    cs_id_df = read_csv(cs_id_csv, encoding='gbk')
+    front_id_df = read_csv(front_id_csv, encoding='gbk')
+    match_id_df = merge(cs_id_df, front_id_df, how='inner', left_on='CUID', right_on='NMS_ORIG_RES_ID')
+    match_num = match_id_df['CUID'].count()
+    all_num = cs_id_df['CUID'].count()
+    print('%.2f%%' % float(match_num * 100 / all_num))
+    all_set = set(cs_id_df['CUID'].values.tolist())
+    match_set = set(match_id_df['CUID'].values.tolist())
+    DataFrame(list(all_set.difference(match_set)), columns=['CUID']).to_csv('diff_id.csv', encoding='gbk')
+
 def cs_title():
     '''传输设备表头'''
     return [
@@ -911,11 +923,23 @@ def cs_port_group_list():
         'SPECIALITY_ID' # 专业类型: 固定值50 传输
     ]
 
-def front_key_group(group_list, regular_dict, front_table):
+def front_key_group(group_list, regular_dict, sign):
     group_dict = {}
     dbh, sth = connect_front()
     for group_key in group_list:
-        sql = 'SELECT %s from %s WHERE DELETE_STATE=0 GROUP BY %s' % (group_key, front_table, group_key)
+        if sign == 'ne':
+            sql = 'SELECT * FROM RES_GUANGXI.TRS_TRS_NE WHERE DELETE_STATE=0'
+        elif sign == 'card':
+            sql = 'SELECT card.*, \
+                (SELECT ne.NMS_ORIG_RES_ID FROM RES_GUANGXI.TRS_TRS_NE ne WHERE card.SUPER_RES_ID=ne.TRS_NE_ID) "NE_NMS_ORIG_RES_ID" \
+                FROM RES_GUANGXI.RME_CARD card \
+                WHERE card.DELETE_STATE=0'
+        elif sign == 'port':
+            sql = 'SELECT port.*, \
+                (SELECT card.NMS_ORIG_RES_ID FROM RES_GUANGXI.RME_CARD card WHERE port.CARD_ID=card.CARD_ID) "CARD_NMS_ORIG_RES_ID", \
+                (SELECT ne.NMS_ORIG_RES_ID FROM RES_GUANGXI.TRS_TRS_NE ne WHERE port.SUPER_RES_ID=ne.TRS_NE_ID) "NE_NMS_ORIG_RES_ID" \
+                FROM RES_GUANGXI.RME_PORT port \
+                WHERE port.DELETE_STATE=0'
         try:
             sth.execute(sql)
             sth.rowfactory = make_row_dict(sth)
@@ -955,9 +979,21 @@ def change_row_dict(front_key_dict, row_gen):
             value = front_key_dict[key][value]
         yield (key, value)
 
-def get_front_data(front_key_dict, front_table):
+def get_front_data(front_key_dict, sign):
     dbh, sth = connect_front()
-    sql = 'select * from %s a where a.DELETE_STATE=0' % front_table
+    if sign == 'ne':
+        sql = 'SELECT * FROM RES_GUANGXI.TRS_TRS_NE WHERE DELETE_STATE=0'
+    elif sign == 'card':
+        sql = 'SELECT card.*, \
+            (SELECT ne.NMS_ORIG_RES_ID FROM RES_GUANGXI.TRS_TRS_NE ne WHERE card.SUPER_RES_ID=ne.TRS_NE_ID) "NE_NMS_ORIG_RES_ID" \
+            FROM RES_GUANGXI.RME_CARD card \
+            WHERE card.DELETE_STATE=0'
+    elif sign == 'port':
+        sql = 'SELECT port.*, \
+            (SELECT card.NMS_ORIG_RES_ID FROM RES_GUANGXI.RME_CARD card WHERE port.CARD_ID=card.CARD_ID) "CARD_NMS_ORIG_RES_ID", \
+            (SELECT ne.NMS_ORIG_RES_ID FROM RES_GUANGXI.TRS_TRS_NE ne WHERE port.SUPER_RES_ID=ne.TRS_NE_ID) "NE_NMS_ORIG_RES_ID" \
+            FROM RES_GUANGXI.RME_PORT port \
+            WHERE port.DELETE_STATE=0'
     try:
         sth.execute(sql)
         sth.rowfactory = make_row_dict(sth)
@@ -967,8 +1003,8 @@ def get_front_data(front_key_dict, front_table):
         print err
     count = 0
     while 1:
-        if count > 100:
-            break
+        # if count > 100:
+        #     break
         print count
         count += 1
         row = sth.fetchone()
@@ -977,3 +1013,174 @@ def get_front_data(front_key_dict, front_table):
         row_dict = row._asdict()
         row_gen = decode_row(row_dict)
         yield dict(change_row_dict(front_key_dict, row_gen))
+
+def connect_source(host='127.0.0.1', port='61111', user='luoyl25', pwd='S198641cn', db='front_source'):
+    '''连接数据库'''
+    pwd = urllib.quote_plus(pwd)
+    connect_str = 'mongodb://' + user + ':' + pwd + '@' + host + ':' + port + '/' + db
+    client = pymongo.MongoClient(connect_str)
+    dbh = client[db]
+    return dbh
+
+def connect_cs():
+    connect_key = DBM.DBM().dbhr_cs()
+    dbh = cx_Oracle.Connection(*connect_key)
+    sth = dbh.cursor()
+    return dbh, sth
+
+def get_tnms(sign):
+    '''
+    网元：
+    0 设备名称 equip_name 设备名称
+    1 设备别名 equip_alias 设备别名
+    2 网络级别 NET_LEVEL 网络级别
+    3 网络层次 TRS_LEVEL 网络层次
+    4 所属网管名称 belong_net_manager 所属网管名称
+    5 所属机房设备放置点 belong_room 所属机房/设备放置点
+    6 设备网管标识 equip_net_id 设备网管标识
+    7 设备厂家 oem 设备厂家
+    8 设备型号 type 设备型号
+    9 设备类型 kind 设备类型
+    10 维护状态 maintain_state 维护状态
+    11 维护方式 maintain_type 维护方式
+    12 维护单位 maintainer 维护单位
+    13 备注 memo 备注
+    14 所属地市 所属传输系统
+    端口：
+    0 设备网管标识
+    1 设备名称 设备名称 设备名称
+    2 机架名称 机架名称 机架名称
+    3 机框名称 机框名称 机框名称
+    4 机框序号 机框序号 机框序号
+    5 机框下插槽序号 机框下插槽序号 机框下插槽序号
+    6 板卡名称 板卡名称 板卡名称
+    7 板卡网管标示
+    8 板卡类型 板卡类型 板卡类型
+    9 板卡型号 板卡型号 板卡型号
+    10 主备方式 主备方式 主备方式
+    11 板卡序列号 板卡序列号 板卡序列号
+    12 端口介质类型 端口介质类型 端口介质类型
+    13 端口序号 端口序号 端口序号
+    14 端口名称 端口名称 端口名称
+    15 端口状态 端口状态 端口状态
+    16 端口速率 端口速率 端口速率
+    17 端口网管标识 端口网管标识 端口网管标识
+    18 所属厂家
+    19 设备类型
+    '''
+    dbh, sth = connect_cs()
+    if sign == 'ne':
+        sql = u"select \
+                te.label_cn \"NE_NAME\", \
+                te.native_ems_name \"ALIAS\", \
+                decode((select d.data_type from district d,nms_system n where d.cuid=n.related_space_cuid and n.cuid=te.related_ems_cuid),'2','二干','3','本地') \"NETWORKLAYER\", \
+                decode(te.service_level,'3','骨干层','5','汇聚层','2','核心层','4','骨干层','6','接入层','1','核心层') \"SYS_LEVEL\", \
+                (select nm.label_cn from nms_system nm where nm.cuid=te.related_ems_cuid) \"NE_SYS_NAME\", \
+                nvl((select r.label_cn from room r where r.cuid = te.related_room_cuid),'未知') \"ROOM_ID\", \
+                te.cuid \"NMS_ORIG_RES_ID\", \
+                (select dv.label_cn from device_vendor dv where dv.cuid=te.related_vendor_cuid) \"MAINTAINDEPT\", \
+                nvl((select nmc.product_model from ne_model_cfg_type nmc where nmc.cuid=te.model),'未知') \"NE_MODEL\", \
+                decode(te.signal_type,'1','SDH','2','PDH','3','WDM','11','IPRAN','7','PDH微波') \"NE_TYPE\", \
+                decode(te.live_cycle,'1','正常','2','在建','3','废弃') \"MNT_STATE_ID\", \
+                decode(te.maint_mode,'1','自维','2','代维') \"MNT_TYPE\", \
+                '1' \"MNT_UNIT\", \
+                '1' \"NOTE\", \
+                (select d.label_cn from district d where d.cuid=substr(te.related_district_cuid,0,26)) \"TRS_NE_ID\" \
+                from trans_element te"
+    elif sign == 'port':
+        sql = u"select \
+                (select te.cuid from trans_element te where te.cuid = p.related_ne_cuid) \"SUPER_RES_ID\", \
+                (select te.label_cn from trans_element te where te.cuid = p.related_ne_cuid) \"NE_NAME\", \
+                '1' \"RACK_NAME\", \
+                '1' \"SHELF_NAME\", \
+                '1' \"RME_SHELF_POSITION\", \
+                '1' \"RME_SLOT_POSITION\", \
+                (select c.label_cn from card c where c.cuid=p.related_card_cuid) \"CARD_NAME\", \
+                (select c.cuid from card c where c.cuid=p.related_card_cuid) \"CARD_ID\", \
+                nvl((select ck.card_remark from card c,card_kind ck where c.cuid=p.related_card_cuid and c.model=ck.cuid),'未知') \"CARD_TYPE_ID\", \
+                (select ck.cardtype_name from card c,card_kind ck where c.cuid=p.related_card_cuid and c.model=ck.cuid) \"CARD_MODEL_ID\", \
+                '1' \"ISBAK\", \
+                (select eh.holder_name from card c,equipment_holder eh where c.cuid=p.related_card_cuid and c.related_upper_component_cuid=eh.cuid) \"RME_PORT_POSITION\", \
+                decode(p.port_type, '1','电端口','2','光端口','3','适配口','4','逻辑端口') \"PORT_TYPE_ID\", \
+                p.port_no \"POSITION\", \
+                p.label_cn \"PORT_NAME\", \
+                decode(p.port_state, '1', '空闲', '2', '占用','3','预占','4','损坏') \"OPR_STATE_ID\", \
+                decode(p.port_rate, '0','未知','1','2M','2','8M','3','10M','4','45M','5','140M','9','155M','13','622M','15','1250M','16','2.5G','17','10G','34','100M','35','GE','36','10GE') \"PORT_RATE\", \
+                p.cuid \"NMS_ORIG_RES_ID\", \
+                (select dv.label_cn from device_vendor dv,card c where dv.cuid = c.vendor and c.cuid = p.related_card_cuid) \"MAINTAINDEPT\", \
+                (select decode(te.signal_type,'1','SDH','2','PDH','3','WDM','11','IPRAN','7','PDH微波') from trans_element te where te.cuid = p.related_ne_cuid) \"NE_TYPE\" \
+                from ptp p"
+    try:
+        sth.execute(sql)
+        sth.rowfactory = make_row_dict(sth)
+        dbh.commit()
+    except Exception.__bases__ as err:
+        dbh.rollback()
+        print err
+    count = 0
+    while 1:
+        print count
+        row = sth.fetchone()
+        if not row:
+            break
+        row_dict = dict(decode_row(row._asdict()))
+        yield row_dict
+        count += 1
+
+def get_source(collection, id_key):
+    dbh = connect_source()
+    repeat_list = []
+    source_ne_dict = {}
+    count = 0
+    for cursor in dbh.get_collection(collection).find({}, {'_id': 0}):
+        if cursor[id_key] in source_ne_dict:
+            repeat_list.append(cursor)
+            continue
+        source_ne_dict[cursor[id_key]] = cursor
+        print count
+        count += 1
+    DataFrame(repeat_list).to_excel(collection+'_repeat'+'.xlsx')
+    return source_ne_dict
+
+def match(sign, id_key, cs_dict):
+    # cs_dict = {
+    #     '前置库字段': '传输综合网管字段'
+    # }
+    collection = 'cs_output' if sign == 'ne' else 'cs_port_output'
+    cs_gen = get_tnms(sign)
+    dbh = connect_mongo_source()
+
+    # 剔除PDH和微波
+    cs_gen = (each for each in cs_gen if each['NE_TYPE'] in ['IPRAN', 'SDH', 'WDM'])
+
+    update_list = []
+    for each in cs_gen:
+        source_dict = dbh.get_collection(collection).find_one({id_key: each['NMS_ORIG_RES_ID']}, {'_id': 0})
+        if source_dict:
+            sign_list = []
+            if cs_dict:
+                for front_key in cs_dict:
+                    source_value = source_dict[front_key]
+                    cs_key = cs_dict[front_key]
+                    if each[cs_key] != source_value:
+                        sign_list.append(front_key + u'-更新')
+            sign_str = ';'.join(sign_list)
+        else:
+            sign_str = u'资源需录入'
+        each['update'] = sign_str
+        update_list.append(each)
+
+    DataFrame(update_list).to_csv(collection+'_upsert.csv', encoding='gbk')
+
+def match_for_import():
+    ne_df = read_csv('cs_output_upsert.csv', encoding='gbk')
+    ne_df = ne_df[ne_df['update'] == u'资源需录入']
+    ipran_df = read_csv('cs_output.csv', encoding='gbk')
+    ipran_import_df = merge(ipran_port_df, ipran_df, how='inner', on=u'NMS_ORIG_RES_ID')
+    ipran_import_df[[u'设备名称_x', u'机架名称', u'机框名称', u'机框序号', u'机框下插槽序号', u'板卡名称', u'板卡网管标示', u'板卡类型', u'板卡型号', u'主备方式', u'板卡序列号', u'端口介质类型', u'端口序号', u'端口名称', u'端口状态', u'端口速率', u'端口网管标识']].to_csv('ipran_import.csv', encoding='gbk')
+
+    cs_port_df = read_csv('cs_port_output_upsert.csv', encoding='gbk')
+    cs_port_df = cs_port_df[cs_port_df['update'] == u'资源需录入']
+    cs_df = read_csv('cs_output.csv', encoding='gbk')
+    cs_import_df = merge(cs_port_df, cs_df, how='inner', left_on=u'设备网管标识', right_on='equip_net_id')
+    cs_import_df[[u'设备名称', u'机架名称', u'机框名称', u'机框序号', u'机框下插槽序号', u'板卡名称', u'板卡网管标示', u'板卡类型', u'板卡型号', u'主备方式', u'板卡序列号', u'端口介质类型', u'端口序号', u'端口名称', u'端口状态', u'端口速率', u'端口网管标识']].to_csv('cs_import.csv', encoding='gbk')
